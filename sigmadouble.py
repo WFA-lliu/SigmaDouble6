@@ -22,7 +22,7 @@ class EchoHandler(socketserver.BaseRequestHandler):
         while True:
             try:
                 self.data = self.request.recv(2048);
-                logging.info("double: %s; peer: %s:%d"%(threading.current_thread().name, self.client_address[0], self.client_address[1]))
+                logging.info("double: %s(:%d); peer: %s:%d"%(threading.current_thread().name, self.server.server_address[1], self.client_address[0], self.client_address[1]))
                 if not self.data:
                     # it would be disconnected by client
                     self.context = SigmaDouble.get_handle_context()
@@ -91,6 +91,11 @@ class SigmaDouble():
         return entities
 
     @staticmethod
+    def is_rsp_valid(rsp: str = None) -> bool:
+        ret_patt_rsp_search0 = re.search("^status", rsp)
+        return False if ret_patt_rsp_search0 is None else True
+
+    @staticmethod
     def get_req_rsp(path: str = None, hdl: str = None, al: str = None) -> dict:
         logging.debug("hdl: %s"%(hdl))
         logging.debug("al: %s"%(al))
@@ -135,7 +140,8 @@ class SigmaDouble():
                     if handle == hdl:
                         capi_rsp: str = line[ret_patt_rsp_search1.end():].rstrip()
                         logging.debug("capi_rsp: %s" % (repr(capi_rsp)))
-                        tmp_rsp.append(capi_rsp)
+                        if SigmaDouble.is_rsp_valid(capi_rsp):
+                            tmp_rsp.append(capi_rsp)
                 elif ret_patt_rsp_search2 is not None:
                     ret_patt_rsp_search0 = re.search(patt_rsp, line)
                     capi_rsp_hdl = line[ret_patt_rsp_search2.start():ret_patt_rsp_search0.start()]
@@ -144,7 +150,8 @@ class SigmaDouble():
                     if alias == al:
                         capi_rsp: str = line[ret_patt_rsp_search2.end():].rstrip()
                         logging.debug("capi_rsp: %s" % (repr(capi_rsp)))
-                        tmp_rsp.append(capi_rsp)
+                        if SigmaDouble.is_rsp_valid(capi_rsp):
+                            tmp_rsp.append(capi_rsp)
                 elif ret_patt_rsp_search3 is not None:
                     ret_patt_rsp_search0 = re.search(patt_rsp, line)
                     capi_rsp_hdl = line[ret_patt_rsp_search3.start():ret_patt_rsp_search0.start()]
@@ -153,7 +160,8 @@ class SigmaDouble():
                     if handle == hdl:
                         capi_rsp: str = line[ret_patt_rsp_search3.end():].rstrip()
                         logging.debug("capi_rsp: %s" % (repr(capi_rsp)))
-                        tmp_rsp.append(capi_rsp)
+                        if SigmaDouble.is_rsp_valid(capi_rsp):
+                            tmp_rsp.append(capi_rsp)
                 else:
                     pass
             if tmp_req is not None:
@@ -170,7 +178,7 @@ class SigmaDouble():
     def get_req_rsp_list(path: str = None, entities: dict = None) -> dict:
         rst = dict()
         for handle in entities:
-            logging.info("handle: %s; data: %s"%(handle, entities[handle]))
+            logging.debug("handle: %s; data: %s"%(handle, entities[handle]))
             rst[handle] = SigmaDouble.get_req_rsp(args.filename, handle, entities[handle]["alias"])
         return rst
 
@@ -188,7 +196,10 @@ class SigmaDouble():
             if ctx["cnt"] < len(rr):
                 # replay existing response
                 rsp = rr[(ctx["cnt"])]["rsp"]
-                rsp.insert(0, str("status,RUNNING"))
+                patt_rsp = "status,RUNNING"
+                ret_patt_rsp_search0 = re.search(patt_rsp, rsp[0])
+                if ret_patt_rsp_search0 is None:
+                    rsp.insert(0, patt_rsp)
             else:
                 # default response, extra argument is added for debugging usage
                 rsp = list()
