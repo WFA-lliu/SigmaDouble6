@@ -13,6 +13,9 @@ import yaml
 DEFAULT_MAPPED_IPV4_ADDRESS: str = "0.0.0.0"
 DEFAULT_MAPPED_TCP_PORT_BASE: int = 8051
 
+class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    pass
+
 class EchoHandler(socketserver.BaseRequestHandler):
     def handle(self):
         self.data = None
@@ -22,7 +25,7 @@ class EchoHandler(socketserver.BaseRequestHandler):
         while True:
             try:
                 self.data = self.request.recv(2048);
-                logging.info("double: %s(:%d); peer: %s:%d"%(threading.current_thread().name, self.server.server_address[1], self.client_address[0], self.client_address[1]))
+                logging.info("double: %s(:%d); peer: %s:%d"%(self.server.alias, self.server.server_address[1], self.client_address[0], self.client_address[1]))
                 if not self.data:
                     # it would be disconnected by client
                     self.context = SigmaDouble.get_handle_context()
@@ -45,11 +48,13 @@ class EchoServer():
         self.handler = handler
         self.server = None
 
-    def run_server(self, args = None):
+    def run_server(self, args = None, alias = None):
         logging.debug("args: %s" %(repr(args)))
+        logging.debug("alias: %s" %(repr(alias)))
         socketserver.TCPServer.allow_reuse_address = True
-        self.server = socketserver.TCPServer((self.host, self.port), self.handler)
+        self.server = ThreadedTCPServer((self.host, self.port), self.handler)
         self.server.args = args
+        self.server.alias = alias
         self.server.serve_forever()
 
     def shutdown_server(self):
@@ -214,14 +219,10 @@ class SigmaDouble():
         es_list = dict()
         est_list = dict()
         for handle in rr:
-            host: str = DEFAULT_MAPPED_IPV4_ADDRESS
-            if entities[handle]["mapped_ipv4"] is not None:
-                host = entities[handle]["mapped_ipv4"]
-            port: int = DEFAULT_MAPPED_TCP_PORT_BASE + cnt
-            if entities[handle]["mapped_port"] is not None:
-                port = entities[handle]["mapped_port"]
+            host = entities[handle]["mapped_ipv4"]
+            port = entities[handle]["mapped_port"]
             es = EchoServer(host, port, EchoHandler)
-            est = threading.Thread(target=es.run_server, name=entities[handle]["alias"], args=(rr[handle],))
+            est = threading.Thread(target=es.run_server, args=(rr[handle], entities[handle]["alias"], ))
             est.deamon = False
             est.start()
             es_list[cnt] = es
@@ -315,17 +316,28 @@ if __name__ == "__main__":
             entity_list = loaded
         #logging.info("entity_list: %s"%(repr(entity_list)))
 
+    cnt: int = 0
+    for handle in entity_list:
+        host: str = DEFAULT_MAPPED_IPV4_ADDRESS
+        port: int = DEFAULT_MAPPED_TCP_PORT_BASE + cnt
+        if entity_list[handle]["mapped_ipv4"] is None or entity_list[handle]["mapped_port"] is None:
+            entity_list[handle]["mapped_ipv4"] = host
+            entity_list[handle]["mapped_port"] = port
+            logging.info("alias: %s, ipv4: %s, port: %d; default"%(entity_list[handle]["alias"], entity_list[handle]["mapped_ipv4"], entity_list[handle]["mapped_port"]))
+        cnt += 1
+
     req_rsp_list = SigmaDouble.get_req_rsp_list(args.filename, entity_list)
     #logging.info("req_rsp_list: %s"%(repr(req_rsp_list)))
 
-    es, est = SigmaDouble.start_double(entity_list, req_rsp_list)
-    # wait forever
-    for cnt in est:
-        est[cnt].join()
-    # exemplifying for termination
-    #time.sleep(30)
-    #SigmaDouble.stop_double(es, est)
-    # TODO: to catch ctrl-C signal
+    try:
+        es, est = SigmaDouble.start_double(entity_list, req_rsp_list)
+        # wait forever
+        for cnt in est:
+            est[cnt].join()
+    except KeyboardInterrupt:
+        logging.debug("Ctrl-C or alike is pressed...")
+    finally:
+        SigmaDouble.stop_double(es, est)
     sys.exit(0)
 
 #SigmaDouble6 - by Leo Liu
