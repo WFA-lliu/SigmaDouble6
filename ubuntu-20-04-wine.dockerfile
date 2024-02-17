@@ -1,0 +1,86 @@
+FROM --platform=amd64 ubuntu:20.04
+
+ARG UID=9527
+ARG USER=WFA
+ARG PASSWORD="docker"
+ENV DEBIAN_FRONTEND noninteractive
+
+RUN apt-get update -y && \
+    apt-get install -y --no-install-recommends \
+        software-properties-common \
+        ca-certificates \
+        language-pack-en \
+        language-pack-zh-hant* \
+        locales \
+        locales-all \
+        wget
+
+# Install Wine
+RUN dpkg --add-architecture i386 && \
+    mkdir -pm755 /etc/apt/keyrings && \
+    wget -O /etc/apt/keyrings/winehq-archive.key https://dl.winehq.org/wine-builds/winehq.key && \
+    wget -nc -P /etc/apt/sources.list.d/ https://dl.winehq.org/wine-builds/ubuntu/dists/$(lsb_release -sc)/winehq-$(lsb_release -sc).sources && \
+    apt-get update -y && \
+    # Wine 7.0 stable has some issues with some games I tested
+    # Use Wine 7.11 staging instead
+    apt-get install -y --install-recommends winehq-staging
+
+# GStreamer plugins
+RUN apt-get update -y && \
+    apt-get install -y --install-recommends \
+        gstreamer1.0-libav:i386
+RUN apt-get update -y && \
+    apt-get install -y --install-recommends \
+        gstreamer1.0-plugins-bad:i386
+RUN apt-get update -y && \
+    apt-get install -y --install-recommends \
+        gstreamer1.0-plugins-base:i386
+RUN apt-get update -y && \
+    apt-get install -y --install-recommends \
+        gstreamer1.0-plugins-good:i386
+RUN apt-get update -y && \
+    apt-get install -y --install-recommends \
+        gstreamer1.0-plugins-ugly:i386
+RUN apt-get update -y && \
+    apt-get install -y --install-recommends \
+        gstreamer1.0-pulseaudio:i386
+
+# Install dependencies for display scaling
+RUN apt-get update -y && \
+    apt-get install -y --install-recommends \
+        build-essential \
+        bc \
+        git \
+        xpra \
+        xvfb \
+        python3 \
+        python3-pip
+
+# Install OpenGL acceleration for display scaling
+RUN pip3 install PyOpenGL==3.1.5 PyOpenGL_accelerate==3.1.5
+
+# Install display scaling script
+RUN cd /tmp && \
+    git clone https://github.com/kaueraal/run_scaled.git && \
+    cp /tmp/run_scaled/run_scaled /usr/local/bin/
+
+# Install missing fonts for Chinese
+RUN apt-get update -y && \
+    apt-get install -y --install-recommends \
+        fonts-wqy-microhei
+
+# Install driver for Intel HD graphics
+RUN apt-get -y install libgl1-mesa-glx libgl1-mesa-dri
+
+ENV LC_ALL zh_TW.UTF-8
+ENV LANG zh_TW.UTF-8
+# Make sure the terminal is still English
+ENV LANGUAGE en_US.UTF-8
+
+RUN apt-get install -qqy sudo
+RUN useradd -r -m -d /home/$USER -s /bin/bash -g root -g sudo -u $UID $USER
+RUN echo "$USER:$PASSWORD" | chpasswd
+RUN echo "root:$PASSWORD" | chpasswd
+USER $USER
+WORKDIR /home/$USER
+
