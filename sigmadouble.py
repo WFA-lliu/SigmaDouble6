@@ -9,6 +9,8 @@ import socketserver
 import threading
 import time
 import yaml
+from datetime import datetime
+from datetime import timedelta
 
 DEFAULT_MAPPED_IPV4_ADDRESS: str = "0.0.0.0"
 DEFAULT_MAPPED_TCP_PORT_BASE: int = 8051
@@ -65,6 +67,31 @@ class SigmaDouble():
         pass
 
     @staticmethod
+    def get_dt(ts: str = None) -> datetime:
+        fmt: str = "%Y-%m-%d %H:%M:%S.%f"
+        dt: datetime = None
+        try:
+            dt = datetime.strptime(ts, fmt)
+        except:
+            pass
+        return dt
+
+    @staticmethod
+    def get_elapsed_time_accumulation_report(fn: str = None, entities: dict = None, rr: dict = None, rpt: str = None) -> bool:
+        f = open(rpt, "a")
+        for handle in rr:
+            alias = entities[handle]["alias"]
+            for h in rr[handle]:
+                td: datetime = rr[handle][h]["rsp_dt"] - rr[handle][h]["req_dt"]
+                capi: str = rr[handle][h]["req"].split(",")[0]
+                capi_argv: list = rr[handle][h]["req"].split(",")[1:]
+                argv: str = ("\"%s\"" % ("" if len(capi_argv) == 0 else ",".join(capi_argv)))
+                print("elapsed: %s; alias: \"%s\"; capi: %s; argv: %s; fn: \"%s\"" % (td.total_seconds(), alias, capi, argv, os.path.basename(fn)), file = f)
+        f.flush()
+        f.close()
+        return True
+
+    @staticmethod
     def get_entity(snippet: str = None, parentheses: bool = True) -> tuple:
         ret_patt_info_search = re.search("INFO - ", snippet)
         alias: str = None
@@ -110,6 +137,8 @@ class SigmaDouble():
         cnt: int = 0
         tmp_req: str = None
         tmp_rsp: list = list()
+        tmp_req_dt: datetime = None
+        tmp_rsp_dt: datetime = None
         # one req might have multiple rsp
         with open(path) as file:
             for line in file:
@@ -120,6 +149,7 @@ class SigmaDouble():
                 ret_patt_rsp_search3 = re.search("INFO - .*\(.*\) <--\s+", line)
                 if ret_patt_req_search is not None:
                     capi_req_hdl = line[ret_patt_req_search.start():ret_patt_req_search.end()]
+                    dt = SigmaDouble.get_dt(line[:ret_patt_req_search.start()-3])
                     #logging.debug("capi_req_hdl: %s" %(capi_req_hdl))
                     (alias, handle) = SigmaDouble.get_entity(capi_req_hdl)
                     if handle == hdl:
@@ -128,51 +158,62 @@ class SigmaDouble():
                         if len(tmp_rsp) > 0:
                             rst[cnt] = dict()
                             rst[cnt]["req"] = tmp_req
+                            rst[cnt]["req_dt"] = tmp_req_dt
                             rst[cnt]["rsp"] = tmp_rsp.copy()
+                            rst[cnt]["rsp_dt"] = tmp_rsp_dt
                             logging.debug("rst[%d]: %s"%(cnt, repr(rst[cnt])))
                             cnt += 1
                             tmp_req = None
                             tmp_rsp.clear()
                         else:
                             pass
+                        tmp_req_dt = dt
                         tmp_req = capi_req
                         state = STATE_RSP
                 elif ret_patt_rsp_search1 is not None:
                     ret_patt_rsp_search0 = re.search(patt_rsp, line)
                     capi_rsp_hdl = line[ret_patt_rsp_search1.start():ret_patt_rsp_search0.start()]
+                    dt = SigmaDouble.get_dt(line[:ret_patt_rsp_search1.start()-3])
                     #logging.debug("capi_rsp_hdl: %s" %(capi_rsp_hdl))
                     (alias, handle) = SigmaDouble.get_entity(capi_rsp_hdl, True)
                     if handle == hdl:
                         capi_rsp: str = line[ret_patt_rsp_search1.end():].rstrip()
                         logging.debug("capi_rsp: %s" % (repr(capi_rsp)))
                         if SigmaDouble.is_rsp_valid(capi_rsp):
+                            tmp_rsp_dt = dt
                             tmp_rsp.append(capi_rsp)
                 elif ret_patt_rsp_search2 is not None:
                     ret_patt_rsp_search0 = re.search(patt_rsp, line)
                     capi_rsp_hdl = line[ret_patt_rsp_search2.start():ret_patt_rsp_search0.start()]
+                    dt = SigmaDouble.get_dt(line[:ret_patt_rsp_search2.start()-3])
                     #logging.debug("capi_rsp_hdl: %s" %(capi_rsp_hdl))
                     (alias, handle) = SigmaDouble.get_entity(capi_rsp_hdl, False)
                     if alias == al:
                         capi_rsp: str = line[ret_patt_rsp_search2.end():].rstrip()
                         logging.debug("capi_rsp: %s" % (repr(capi_rsp)))
                         if SigmaDouble.is_rsp_valid(capi_rsp):
+                            tmp_rsp_dt = dt
                             tmp_rsp.append(capi_rsp)
                 elif ret_patt_rsp_search3 is not None:
                     ret_patt_rsp_search0 = re.search(patt_rsp, line)
                     capi_rsp_hdl = line[ret_patt_rsp_search3.start():ret_patt_rsp_search0.start()]
+                    dt = SigmaDouble.get_dt(line[:ret_patt_rsp_search3.start()-3])
                     #logging.debug("capi_rsp_hdl: %s" %(capi_rsp_hdl))
                     (alias, handle) = SigmaDouble.get_entity(capi_rsp_hdl, True)
                     if handle == hdl:
                         capi_rsp: str = line[ret_patt_rsp_search3.end():].rstrip()
                         logging.debug("capi_rsp: %s" % (repr(capi_rsp)))
                         if SigmaDouble.is_rsp_valid(capi_rsp):
+                            tmp_rsp_dt = dt
                             tmp_rsp.append(capi_rsp)
                 else:
                     pass
             if tmp_req is not None:
                 rst[cnt] = dict()
                 rst[cnt]["req"] = tmp_req
+                rst[cnt]["req_dt"] = tmp_req_dt
                 rst[cnt]["rsp"] = tmp_rsp.copy()
+                rst[cnt]["rsp_dt"] = tmp_rsp_dt
                 logging.debug("rst[%d]: %s"%(cnt, repr(rst[cnt])))
                 cnt += 1
                 tmp_req = None
@@ -242,6 +283,16 @@ if __name__ == "__main__":
         "--verbose",
         action="store_true",
         help="verbosity")
+    my_parser.add_argument("-a",
+        "--accumulated",
+        action="store_true",
+        help="elapsed time accumulated mode of each CAPI")
+    my_parser.add_argument("-r",
+        "--report",
+        metavar="report",
+        default="sigmadouble6-report.txt",
+        type=str,
+        help="filename of report for elapsed time accumulated mode")
     my_parser.add_argument("-f",
         "--filename",
         metavar="filename",
@@ -328,6 +379,13 @@ if __name__ == "__main__":
 
     req_rsp_list = SigmaDouble.get_req_rsp_list(args.filename, entity_list)
     #logging.info("req_rsp_list: %s"%(repr(req_rsp_list)))
+
+    if args.accumulated == True:
+        #create an empty file
+        with open(args.report, 'w') as f:
+            pass
+        SigmaDouble.get_elapsed_time_accumulation_report(args.filename, entity_list, req_rsp_list, args.report)
+        sys.exit(0)
 
     try:
         es, est = SigmaDouble.start_double(entity_list, req_rsp_list)
