@@ -97,8 +97,8 @@ class SigmaDouble():
         alias: str = None
         handle: str = None
         if parentheses == True:
-            ret_patt_left_parentheses_search = re.search("\(", snippet)
-            ret_patt_right_parentheses_search = re.search("\)", snippet)
+            ret_patt_left_parentheses_search = re.search("\\(", snippet)
+            ret_patt_right_parentheses_search = re.search("\\)", snippet)
             alias = snippet[ret_patt_info_search.end():ret_patt_left_parentheses_search.start()-1]
             handle = snippet[ret_patt_left_parentheses_search.end():ret_patt_right_parentheses_search.start()]
         else:
@@ -110,14 +110,23 @@ class SigmaDouble():
         entities = dict()
         with open(path) as file:
             for line in file:
-                ret_patt_req_search = re.search("INFO - .*\(.*\) --->", line)
+                ret_patt_req_search = re.search("INFO - .*\\(.*\\) --->", line)
                 if ret_patt_req_search is not None:
                     capi_req_hdl = line[ret_patt_req_search.start():ret_patt_req_search.end()]
                     (alias, handle) = SigmaDouble.get_entity(capi_req_hdl)
-                    entities[handle] = dict()
-                    entities[handle]["alias"] = alias
-                    entities[handle]["mapped_ipv4"] = None
-                    entities[handle]["mapped_port"] = None
+                    if len(alias) == 0:
+                        if handle in entities:
+                            logging.debug("empty; handle: %s; alias: %s" %(handle, entities[handle]["alias"]))
+                        else:
+                            entities[handle] = dict()
+                            entities[handle]["alias"] = "Unknown"
+                            entities[handle]["mapped_ipv4"] = None
+                            entities[handle]["mapped_port"] = None
+                    else:
+                        entities[handle] = dict()
+                        entities[handle]["alias"] = alias
+                        entities[handle]["mapped_ipv4"] = None
+                        entities[handle]["mapped_port"] = None
                 else:
                     pass
         return entities
@@ -142,11 +151,12 @@ class SigmaDouble():
         # one req might have multiple rsp
         with open(path) as file:
             for line in file:
-                ret_patt_req_search = re.search("INFO - .*\(.*\) --->\s", line)
+                ret_patt_req_search = re.search("INFO - .*\\(.*\\) --->\\s", line)
                 patt_rsp = "<--"
-                ret_patt_rsp_search1 = re.search("INFO - .*\(.*\) <----\s+", line)
-                ret_patt_rsp_search2 = re.search("INFO - .*<--\d+\s", line)
-                ret_patt_rsp_search3 = re.search("INFO - .*\(.*\) <--\s+", line)
+                ret_patt_rsp_search1 = re.search("INFO - .*\\(.*\\) <----\\s+", line)
+                ret_patt_rsp_search4 = re.search("INFO - .*\\(.*\\) <---\\s+", line)
+                ret_patt_rsp_search2 = re.search("INFO - .*<--\\d+\\s", line)
+                ret_patt_rsp_search3 = re.search("INFO - .*\\(.*\\) <--\\s+", line)
                 if ret_patt_req_search is not None:
                     capi_req_hdl = line[ret_patt_req_search.start():ret_patt_req_search.end()]
                     dt = SigmaDouble.get_dt(line[:ret_patt_req_search.start()-3])
@@ -178,6 +188,18 @@ class SigmaDouble():
                     (alias, handle) = SigmaDouble.get_entity(capi_rsp_hdl, True)
                     if handle == hdl:
                         capi_rsp: str = line[ret_patt_rsp_search1.end():].rstrip()
+                        logging.debug("capi_rsp: %s" % (repr(capi_rsp)))
+                        if SigmaDouble.is_rsp_valid(capi_rsp):
+                            tmp_rsp_dt = dt
+                            tmp_rsp.append(capi_rsp)
+                elif ret_patt_rsp_search4 is not None:
+                    ret_patt_rsp_search0 = re.search(patt_rsp, line)
+                    capi_rsp_hdl = line[ret_patt_rsp_search4.start():ret_patt_rsp_search0.start()]
+                    dt = SigmaDouble.get_dt(line[:ret_patt_rsp_search4.start()-3])
+                    #logging.debug("capi_rsp_hdl: %s" %(capi_rsp_hdl))
+                    (alias, handle) = SigmaDouble.get_entity(capi_rsp_hdl, True)
+                    if handle == hdl:
+                        capi_rsp: str = line[ret_patt_rsp_search4.end():].rstrip()
                         logging.debug("capi_rsp: %s" % (repr(capi_rsp)))
                         if SigmaDouble.is_rsp_valid(capi_rsp):
                             tmp_rsp_dt = dt
@@ -219,7 +241,7 @@ class SigmaDouble():
                 tmp_req = None
                 tmp_rsp.clear()
         return rst
- 
+
     @staticmethod
     def get_req_rsp_list(path: str = None, entities: dict = None) -> dict:
         rst = dict()
@@ -348,7 +370,7 @@ if __name__ == "__main__":
                 port += 1
             try:
                 with open(args.store, "w",) as f :
-                    yaml.dump(entity_list, f, sort_keys=True) 
+                    yaml.dump(entity_list, f, sort_keys=True)
             except:
                 logging.warning("invalid: %s"%(args.store))
                 sys.exit(1)
