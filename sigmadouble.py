@@ -94,15 +94,17 @@ class SigmaDouble():
     @staticmethod
     def get_entity(snippet: str = None, parentheses: bool = True) -> tuple:
         ret_patt_info_search = re.search("INFO - ", snippet)
+        ret_patt_parallel_search = re.search("parallelID:\\d+:\\d+:\\s", snippet)
+        alias_index_begin: int = ret_patt_info_search.end() if (ret_patt_parallel_search is None) else ret_patt_parallel_search.end()
         alias: str = None
         handle: str = None
         if parentheses == True:
             ret_patt_left_parentheses_search = re.search("\\(", snippet)
             ret_patt_right_parentheses_search = re.search("\\)", snippet)
-            alias = snippet[ret_patt_info_search.end():ret_patt_left_parentheses_search.start()-1]
+            alias = snippet[alias_index_begin:ret_patt_left_parentheses_search.start()-1]
             handle = snippet[ret_patt_left_parentheses_search.end():ret_patt_right_parentheses_search.start()]
         else:
-            alias = snippet[ret_patt_info_search.end():].rstrip()
+            alias = snippet[alias_index_begin:].rstrip()
         return (alias, handle)
 
     @staticmethod
@@ -333,6 +335,12 @@ if __name__ == "__main__":
         default=DEFAULT_MAPPED_TCP_PORT_BASE,
         type=int,
         help="mapped TCP listening port base; only for mapping stored filename")
+    my_parser.add_argument("-e",
+        "--exclude",
+        metavar="exclude",
+        default=None,
+        type=str,
+        help="excluding handle (ipv4:port formatted)")
     my_parser_group = my_parser.add_mutually_exclusive_group()
     my_parser_group.add_argument("-s",
         "--store",
@@ -398,6 +406,7 @@ if __name__ == "__main__":
             entity_list[handle]["mapped_port"] = port
             logging.info("alias: %s, ipv4: %s, port: %d; default"%(entity_list[handle]["alias"], entity_list[handle]["mapped_ipv4"], entity_list[handle]["mapped_port"]))
         cnt += 1
+    logging.info("%s QTY: %d" % ("original", cnt))
 
     req_rsp_list = SigmaDouble.get_req_rsp_list(args.filename, entity_list)
     #logging.info("req_rsp_list: %s"%(repr(req_rsp_list)))
@@ -408,6 +417,17 @@ if __name__ == "__main__":
             pass
         SigmaDouble.get_elapsed_time_accumulation_report(args.filename, entity_list, req_rsp_list, args.report)
         sys.exit(0)
+
+    if args.exclude is not None:
+        removed_entry: dict = entity_list.pop(args.exclude, None)
+        removed_req_rsp: dict = req_rsp_list.pop(args.exclude, None)
+        logging.debug("removed_entry: %s"%(repr(removed_entry)))
+        logging.debug("removed_req_rsp: %s"%(repr(removed_req_rsp)))
+        excluded_cnt: int = 0
+        for handle in entity_list:
+            logging.info("alias: %s, ipv4: %s, port: %d; default"%(entity_list[handle]["alias"], entity_list[handle]["mapped_ipv4"], entity_list[handle]["mapped_port"]))
+            excluded_cnt += 1
+        logging.info("%s QTY: %d" % ("excluded", excluded_cnt))
 
     try:
         es, est = SigmaDouble.start_double(entity_list, req_rsp_list)

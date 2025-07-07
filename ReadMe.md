@@ -7,13 +7,12 @@
 <summary>from source (.py)</summary>
 
 ```sh
-usage: sigmadouble.py [-h] [-v] [-a] [-r report] [-f filename]
-                      [-i mapped_ipv4] [-p mapped_port_base]
+usage: sigmadouble.py [-h] [-v] [-a] [-r report] [-f filename] [-i mapped_ipv4] [-p mapped_port_base] [-e exclude]
                       [-s mapping_stored_filename | -l mapping_loaded_filename]
 
 CLI argument parsing
 
-optional arguments:
+options:
   -h, --help            show this help message and exit
   -v, --verbose         verbosity
   -a, --accumulated     elapsed time accumulated mode of each CAPI
@@ -24,8 +23,9 @@ optional arguments:
   -i mapped_ipv4, --ip mapped_ipv4
                         mapped IPv4 address; only for mapping stored filename
   -p mapped_port_base, --port mapped_port_base
-                        mapped TCP listening port base; only for mapping
-                        stored filename
+                        mapped TCP listening port base; only for mapping stored filename
+  -e exclude, --exclude exclude
+                        excluding handle (ipv4:port formatted)
   -s mapping_stored_filename, --store mapping_stored_filename
                         mapping stored filename, from UCC log; YAML formatted
   -l mapping_loaded_filename, --load mapping_loaded_filename
